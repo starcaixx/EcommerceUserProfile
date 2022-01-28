@@ -1,20 +1,14 @@
 package etl;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.module.paranamer.ParanamerModule;
-import jdk.nashorn.internal.ir.ObjectNode;
 import lombok.Data;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import utils.SparkUtils;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -25,31 +19,28 @@ public class MemberEtl {
     public static void main(String[] args) {
         SparkSession session = SparkUtils.initSession();
 
+        // 写sql查询数据
         List<MemberSex> memberSexes = memberSexEtl(session);
         List<MemberChannel> memberChannels = memberChannelEtl(session);
         List<MemberMpSub> memberMpSubs = memberMpSubEtl(session);
         MemberHeat memberHeat = memberHeatEtl(session);
 
+        // 拼成需要的结果
         MemberVo memberVo = new MemberVo();
-        memberVo.setMemberChannels(memberChannels);
-        memberVo.setMemberHeat(memberHeat);
-        memberVo.setMemberMpSubs(memberMpSubs);
-        memberVo.setMemberSexes(memberSexes);
-
-        System.out.println("=======");
+        System.out.println("======="+objectMapper.valueToTree(memberVo).asText());
     }
-
 
     public static List<MemberSex> memberSexEtl(SparkSession session) {
         Dataset<Row> dataset = session.sql("select sex as memberSex,count(id) as sexCount" +
                 "from ecommerce.t_member group by sex");
-
 
         List<MemberSex> result = dataset.toJSON().collectAsList().stream().map(str ->{
             MemberSex memberSex = null;
             try {
                 memberSex = objectMapper.readValue(str, MemberSex.class);
             } catch (JsonProcessingException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
                 e.printStackTrace();
             }
             return memberSex;
@@ -66,6 +57,8 @@ public class MemberEtl {
             try {
                 memberChannel = objectMapper.readValue(str, MemberChannel.class);
             } catch (JsonProcessingException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
                 e.printStackTrace();
             }
             return memberChannel;
@@ -84,6 +77,8 @@ public class MemberEtl {
             try {
                 memberMpSub = objectMapper.readValue(str, MemberMpSub.class);
             } catch (JsonProcessingException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
                 e.printStackTrace();
             }
             return memberMpSub;
@@ -111,6 +106,8 @@ public class MemberEtl {
                 memberHeat = objectMapper.readValue(str, MemberHeat.class);
             } catch (JsonProcessingException e) {
                 e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
             }
             return memberHeat;
         }).collect(Collectors.toList());
@@ -118,40 +115,37 @@ public class MemberEtl {
         return result.get(0);
     }
 
-
+    // 想要展示饼图的数据信息
     @Data
     static class MemberVo{
-        private List<MemberSex> memberSexes;
-        private List<MemberChannel> memberChannels;
-        private List<MemberMpSub> memberMpSubs;
-        private MemberHeat memberHeat;
+        private List<MemberSex> memberSexes;    // 性别统计信息
+        private List<MemberChannel> memberChannels;  // 渠道来源统计信息
+        private List<MemberMpSub> memberMpSubs;  // 用户是否关注媒体平台
+        private MemberHeat memberHeat;   // 用户热度统计
     }
-
+    // 分别定义每个元素类
     @Data
-    class MemberSex{
+    static class MemberSex {
         private Integer memberSex;
         private Integer sexCount;
     }
-
     @Data
-    class MemberChannel{
+    static class MemberChannel {
         private Integer memberChannel;
         private Integer channelCount;
     }
-
     @Data
-    class MemberMpSub{
+    static class MemberMpSub {
         private Integer subCount;
         private Integer unSubCount;
     }
-
     @Data
-    class MemberHeat{
-        private Integer reg;
-        private Integer complete;
-        private Integer order;
-        private Integer orderAgain;
-        private Integer coupon;
+    static class MemberHeat {
+        private Integer reg;    // 只注册，未填写手机号
+        private Integer complete;    // 完善了信息，填了手机号
+        private Integer order;    // 下过订单
+        private Integer orderAgain;    // 多次下单，复购
+        private Integer coupon;    // 购买过优惠券，储值
     }
 
 }

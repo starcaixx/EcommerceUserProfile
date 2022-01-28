@@ -31,6 +31,8 @@ import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
 import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer;
+import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumerBase;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.SqlDialect;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -150,9 +152,38 @@ public class FlinkCDC {
 
 
         String[] fieldNames  =
-                {"id","user_name","user_password","user_phone","create_time","update_time"};
+                {"id","login_name","nick_name","passwd","name","phone_num","email","head_img","user_level","birthday","gender","create_time","operate_time","status","operation"};
 
         TypeInformation[] types =
+                {Types.INT,Types.STRING,Types.STRING,Types.STRING,Types.STRING,Types.STRING,Types.STRING,
+                        Types.STRING,Types.STRING,Types.LOCAL_DATE,Types.STRING,Types.LOCAL_DATE_TIME,
+                        Types.LOCAL_DATE_TIME,Types.STRING,Types.STRING};
+
+        SingleOutputStreamOperator<Row> rowDS = mysqlDS.map(record -> {
+            JsonNode jsonNode = objectMapper.readValue(record, JsonNode.class);
+            int arity = fieldNames.length;
+            JsonNode data = jsonNode.get("data");
+            Row row = new Row(arity);
+            row.setField(0, data.get("id").asText());
+            row.setField(1, data.get("login_name").asText());
+            row.setField(2, data.get("nick_name").asText());
+            row.setField(3, data.get("passwd").asText());
+            row.setField(4, data.get("name").asText());
+            row.setField(5, data.get("phone_num").asText());
+            row.setField(6, data.get("email").asText());
+            row.setField(7, data.get("head_img").asText());
+            row.setField(8, data.get("user_level").asText());
+            row.setField(9, data.get("birthday").asText());
+            row.setField(10, data.get("gender").asText());
+            row.setField(11, data.get("create_time").asText());
+            row.setField(12, data.get("operate_time").asText());
+            row.setField(13, data.get("status").asText());
+            row.setField(14, jsonNode.get("timestamp").asText());
+            row.setField(15, jsonNode.get("operation").asText());
+            return row;
+        });
+
+        /*TypeInformation[] types =
                 {Types.INT,Types.STRING,Types.STRING,Types.STRING,Types.STRING,Types.STRING};
 
         SingleOutputStreamOperator<Row> ds2 = mysqlDS.map(new
@@ -174,35 +205,14 @@ public class FlinkCDC {
                    row.setField(7, jsonNode.get("operation").asText());
                    return row;
                }
-           }, new RowTypeInfo(types, fieldNames));
+           }, new RowTypeInfo(types, fieldNames));*/
         // 设置水印
-        SingleOutputStreamOperator<Row> ds3 =
-                ds2.assignTimestampsAndWatermarks(
-
-                    WatermarkStrategy.<Row>forBoundedOutOfOrderness(Duration.ofSeconds(3))
-                    .withTimestampAssigner(new
-                       SerializableTimestampAssigner<Row>() {
-                           @Override
-                           public long extractTimestamp(Row element, long
-                                   recordTimestamp) {
-                               String create_time = (String)
-                                       element.getField(2);
-                               FastDateFormat dateFormat =
-                                       FastDateFormat.getInstance("yyyy-MM-dd HH:mm:ss");
-                               try {
-                                   long time =
-                                           dateFormat.parse(create_time).getTime();
-                                   return time;
-                               } catch (ParseException e) {
-                                   e.printStackTrace();
-                               }
-                               return 0;
-                           }
-                       })
-                );
+        SingleOutputStreamOperator<Row> withWmDS = rowDS.assignTimestampsAndWatermarks(WatermarkStrategy.
+                <Row>forBoundedOutOfOrderness(Duration.ofSeconds(5))
+                .withTimestampAssigner((row, timestamp) -> Long.valueOf(row.getField(14).toString())));
 
         //设置flinksql环境
-        /*EnvironmentSettings tableEnvSettings = EnvironmentSettings.newInstance().useBlinkPlanner().inStreamingMode().build();
+        EnvironmentSettings tableEnvSettings = EnvironmentSettings.newInstance().useBlinkPlanner().inStreamingMode().build();
         //创建table env
         StreamTableEnvironment tableEnv = StreamTableEnvironment.create(env, tableEnvSettings);
 
@@ -223,7 +233,7 @@ public class FlinkCDC {
         tableEnv.useCatalog(catalogName);
 
         //创建mysql cdc数据源
-        tableEnv.executeSql("create database if not exists cdc");
+        /*tableEnv.executeSql("create database if not exists cdc");
         tableEnv.executeSql("create table cdc.order_info(id bigint, user_id bigint," +
                 "create_time timestamp,opercate_time,province_id int,order_status string," +
                 "total_amount decimal(10,5)) with ('connector' = 'mysql-cdc' , " +
@@ -269,109 +279,43 @@ public class FlinkCDC {
 
 
         SingleOutputStreamOperator<Row> ds2 = streamSource.map(new
-           MapFunction<String, Row>() {
-               @Override
-               public Row map(String value) throws Exception {
-                   JsonNode jsonNode = objectMapper.readValue(value, JsonNode.class);
-                   System.out.println(jsonNode);
-                   int arity = fieldNames.length;
-                   Row row = new Row(arity);
-                   row.setField(0, changelogVO.getData().getId());
-                   row.setField(1, changelogVO.getData().getUserId());
-                   row.setField(2, changelogVO.getData().getCreateTime());
-                   row.setField(3, changelogVO.getData().getOperateTime());
-                   row.setField(4, changelogVO.getData().getProviceId());
-                   row.setField(5, changelogVO.getData().getOrderStatus());
-                   row.setField(6, changelogVO.getData().getTotalAmount());
-                   String operation = getOperation(op);
-                   row.setField(7, operation);
-                   return row;
-               }
-
-               private String getOperation(String op) {
-                   String operation = "INSERT";
-                   for (RowKind rk : RowKind.values()) {
-                       if (rk.shortString().equals(op)) {
-                           switch (rk) {
-                               case UPDATE_BEFORE:
-                                   operation = "UPDATE-BEFORE";
-                                   break;
-                               case UPDATE_AFTER:
-                                   operation = "UPDATE-AFTER";
-                                   break;
-                               case DELETE:
-                                   operation = "DELETE";
-                                   break;
-                               case INSERT:
-                               default:
-                                   operation = "INSERT";
-                                   break;
-                           }
-                           break;
-                       }
-                   }
-                   return operation;
-               }
-           }, new RowTypeInfo(types, fieldNames));
+           MapFunction<String, Row>() {xxx, new RowTypeInfo(types, fieldNames));
         // 设置水印
-        SingleOutputStreamOperator<Row> ds3 =
-        ds2.assignTimestampsAndWatermarks(
-
-        WatermarkStrategy.<Row>forBoundedOutOfOrderness(Duration.ofSeconds(3))
-        .withTimestampAssigner(new
-       SerializableTimestampAssigner<Row>() {
-           @Override
-           public long extractTimestamp(Row element, long
-                   recordTimestamp) {
-               String create_time = (String)
-                       element.getField(2);
-               FastDateFormat dateFormat =
-                       FastDateFormat.getInstance("yyyy-MM-dd HH:mm:ss");
-               try {
-                   long time =
-                           dateFormat.parse(create_time).getTime();
-                   return time;
-               } catch (ParseException e) {
-                   e.printStackTrace();
-               }
-               return 0;
-           }
-       })
-                );
-        tableEnv.createTemporaryView("merged_order_info", ds3);
+        */
+        tableEnv.createTemporaryView("merged_order_info", withWmDS);
         tableEnv.getConfig().setSqlDialect(SqlDialect.HIVE);
         tableEnv.executeSql("CREATE DATABASE IF NOT EXISTS ods");
         tableEnv.executeSql("DROP TABLE IF EXISTS ods.order_info");
         tableEnv.executeSql("CREATE TABLE ods.order_info (\n" +
-                        "  id BIGINT,\n" +
-                        "   user_id BIGINT,\n" +
-                        "   create_time STRING,\n" +
-                        "   operate_time STRING,\n" +
-                        "   province_id INT,\n" +
-                        "   order_status INT,\n" +
-                        "   total_amount DOUBLE,\n" +
-                        "   op STRING \n" +
-                        ") PARTITIONED BY (dt STRING, hr STRING) STORED AS parquet TBLPROPERTIES (\n" +
-                        "  'partition.time-extractor.timestamp-pattern'='$dt $hr:00:00',\n" +
-        "  'sink.partition-commit.trigger'='partition-time',\n" +
+                "  id BIGINT,\n" +
+                "   user_id BIGINT,\n" +
+                "   create_time STRING,\n" +
+                "   operate_time STRING,\n" +
+                "   province_id INT,\n" +
+                "   order_status INT,\n" +
+                "   total_amount DOUBLE,\n" +
+                "   op STRING \n" +
+                ") PARTITIONED BY (dt STRING, hr STRING) STORED AS parquet TBLPROPERTIES (\n" +
+                "  'partition.time-extractor.timestamp-pattern'='$dt $hr:00:00',\n" +
+                "  'sink.partition-commit.trigger'='partition-time',\n" +
                 "  'sink.partition-commit.delay'='1 min',\n" +
                 "'sink.partition-commit.policy.kind'='metastore,success-file'\n" +
-        ")");
+                ")");
         tableEnv.getConfig().setSqlDialect(SqlDialect.DEFAULT);
         tableEnv.executeSql("INSERT INTO ods.order_info\n" +
-                        "SELECT \n" +
-                        "id,\n" +
-                        "user_id,\n" +
-                        "create_time,\n" +
-                        "operate_time,\n" +
-                        "province_id,\n" +
-                        "order_status,\n" +
-                        "total_amount,\n" +
-                        "op,\n" +
-                        "DATE_FORMAT(TO_TIMESTAMP(create_time,'yyyy-MM-dd HH:mm:ss'),'yyyy-MM-dd') as dt,\n" +
-        "DATE_FORMAT(TO_TIMESTAMP(create_time,'yyyy-MM-ddHH:mm:ss'),'HH') as hr\n" +
-        "FROM merged_order_info"
-        );*/
+                "SELECT \n" +
+                "id,\n" +
+                "user_id,\n" +
+                "create_time,\n" +
+                "operate_time,\n" +
+                "province_id,\n" +
+                "order_status,\n" +
+                "total_amount,\n" +
+                "op,\n" +
+                "DATE_FORMAT(TO_TIMESTAMP(create_time,'yyyy-MM-dd HH:mm:ss'),'yyyy-MM-dd') as dt,\n" +
+                "DATE_FORMAT(TO_TIMESTAMP(create_time,'yyyy-MM-ddHH:mm:ss'),'HH') as hr\n" +
+                "FROM merged_order_info"
+        );
 
         env.execute("Print MySQL Snapshot + Binlog");
     }
