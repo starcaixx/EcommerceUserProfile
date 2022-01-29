@@ -11,7 +11,8 @@ public class SparkUtils {
         }
 
         SparkSession session = SparkSession.builder().appName("etl").master("local[*]")
-                .config("es.nodes", "localhost")
+                .config("hive.metastore.uris","thrift://node:9083")
+                .config("es.nodes", "node")
                 .config("es.port", "9200")
                 .config("es.index.auto.cerate", "false")
                 .enableHiveSupport()

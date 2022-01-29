@@ -3,6 +3,7 @@ package etl;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,19 +26,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class GrowthEtl {
-    public static void main(String[] args) {
+    private static ObjectMapper objectMapper = new ObjectMapper();
+
+    public static void main(String[] args) throws JsonProcessingException {
         SparkSession session = SparkUtils.initSession();
 
         List<GrowthLineVo> growthLineVos = growthEtl(session);
-        System.out.println(growthLineVos);
+        System.out.println(">>>>>>>>>>>>>"+objectMapper.writeValueAsString(growthLineVos));
     }
 
     private static List<GrowthLineVo> growthEtl(SparkSession session) {
-        LocalDate now = LocalDate.of(2020, Month.NOVEMBER, 30);
+        LocalDate now = LocalDate.of(2019, Month.NOVEMBER, 30);
 
         LocalDate sevenDateAgo = now.plusDays(-7);
 
-        ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.registerModule(new ParanamerModule());
 
         objectMapper.configure(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY, true);

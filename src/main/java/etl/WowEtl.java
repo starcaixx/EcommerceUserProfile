@@ -2,6 +2,7 @@ package etl;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,24 +13,25 @@ import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import utils.SparkUtils;
 
+import java.io.IOException;
 import java.time.LocalDate;
 import java.time.Month;
 import java.util.List;
 import java.util.stream.Collectors;
 
 public class WowEtl {
-    public static void main(String[] args) {
+    private static ObjectMapper objectMapper = new ObjectMapper();
+    public static void main(String[] args) throws JsonProcessingException {
         SparkSession session = SparkUtils.initSession();
 
         List<RegVo> regVos = regWeekCount(session);
         List<OrderVo> orderVos = orderWeekCount(session);
 
-        System.out.println("==============="+regVos);
-        System.out.println("==============="+orderVos);
+        System.out.println("==============="+objectMapper.writeValueAsString(regVos));
+        System.out.println("==============="+objectMapper.writeValueAsString(orderVos));
     }
 
     private static List<RegVo> regWeekCount(SparkSession session) {
-        ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.registerModule(new ParanamerModule());
 
         objectMapper.configure(DeserializationFeature.ACCEPT_SINGLE_VALUE_AS_ARRAY, true);
@@ -43,7 +45,7 @@ public class WowEtl {
         objectMapper.setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
         objectMapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
 
-        LocalDate now = LocalDate.of(2020, Month.NOVEMBER, 30);
+        LocalDate now = LocalDate.of(2019, Month.NOVEMBER, 30);
         LocalDate lastTwoWeekFirstDay = now.plusDays(-14);
 
         String sql = "select\n" +
@@ -55,7 +57,17 @@ public class WowEtl {
         sql= String.format(sql, lastTwoWeekFirstDay,now);
         Dataset<Row> regDS = session.sql(sql);
         List<String> list = regDS.toJSON().collectAsList();
-        List<RegVo> result = list.stream().map(str -> objectMapper.convertValue(str, RegVo.class))
+        list.stream().forEach(str->System.out.println(str));
+        List<RegVo> result = list.stream().map(str -> {
+//            objectMapper.convertValue(str, RegVo.class)
+            RegVo regVo = null;
+            try {
+                regVo = objectMapper.readValue(str, RegVo.class);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return regVo;
+        })
                 .collect(Collectors.toList());
         return result;
     }

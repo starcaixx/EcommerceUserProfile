@@ -16,7 +16,7 @@ public class MemberEtl {
 
     private static ObjectMapper objectMapper = new ObjectMapper();
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws JsonProcessingException {
         SparkSession session = SparkUtils.initSession();
 
         // 写sql查询数据
@@ -27,12 +27,16 @@ public class MemberEtl {
 
         // 拼成需要的结果
         MemberVo memberVo = new MemberVo();
-        System.out.println("======="+objectMapper.valueToTree(memberVo).asText());
+        memberVo.setMemberSexes(memberSexes);
+        memberVo.setMemberMpSubs(memberMpSubs);
+        memberVo.setMemberChannels(memberChannels);
+        memberVo.setMemberHeat(memberHeat);
+        System.out.println("====="+objectMapper.writeValueAsString(memberVo));
     }
 
     public static List<MemberSex> memberSexEtl(SparkSession session) {
         Dataset<Row> dataset = session.sql("select sex as memberSex,count(id) as sexCount" +
-                "from ecommerce.t_member group by sex");
+                " from ecommerce.t_member group by sex");
 
         List<MemberSex> result = dataset.toJSON().collectAsList().stream().map(str ->{
             MemberSex memberSex = null;
@@ -50,7 +54,7 @@ public class MemberEtl {
 
     public static List<MemberChannel> memberChannelEtl(SparkSession session) {
         Dataset<Row> dataset = session.sql("select member_channel as memberChannel,count(id) as channelCount" +
-                "from ecommerce.t_member group by member_channel");
+                " from ecommerce.t_member group by member_channel");
 
         List<MemberChannel> result = dataset.toJSON().collectAsList().stream().map(str ->{
             MemberChannel memberChannel = null;
@@ -68,7 +72,7 @@ public class MemberEtl {
 
     public static List<MemberMpSub> memberMpSubEtl(SparkSession session) {
         Dataset<Row> sub = session.sql("select count(if(mp_open_id!='null',1,null)) as subCount," +
-                "count(if(mp_open_id='null'1,null)) as unSubCount from ecommerce.t_member");
+                "count(if(mp_open_id='null',1,null)) as unSubCount from ecommerce.t_member");
 
         List<String> list = sub.toJSON().collectAsList();
 

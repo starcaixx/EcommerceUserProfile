@@ -1,5 +1,7 @@
 package etl;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
@@ -9,15 +11,17 @@ import utils.SparkUtils;
 
 
 public class ConversionEtl {
-    public static void main(String[] args) {
+    private static ObjectMapper objectMapper = new ObjectMapper();
+
+    public static void main(String[] args) throws JsonProcessingException {
         SparkSession session = SparkUtils.initSession();
 
         ConversionVo conversionVo = conversionBehaviorCount(session);
-        System.out.println(conversionVo);
+        System.out.println(">>>>>>>>>>"+objectMapper.writeValueAsString(conversionVo));
     }
 
     private static ConversionVo conversionBehaviorCount(SparkSession session) {
-        Dataset<Row> orderMember = session.sql("select distinct(member_id) from ecomerce.t_order where order_status=2");
+        Dataset<Row> orderMember = session.sql("select distinct(member_id) from ecommerce.t_order where order_status=2");
 
         Dataset<Row> orderAgainMember = session.sql("select\n" +
                 "t.member_id as member_id\n" +
